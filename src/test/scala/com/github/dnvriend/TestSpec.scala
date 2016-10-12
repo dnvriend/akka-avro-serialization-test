@@ -16,12 +16,16 @@
 
 package com.github.dnvriend
 
+import java.io.{ ByteArrayInputStream, InputStream }
+import java.util.Base64
+
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
 import akka.event.{ Logging, LoggingAdapter }
 import akka.serialization.SerializationExtension
 import akka.stream.{ ActorMaterializer, Materializer }
 import akka.testkit.TestProbe
 import akka.util.Timeout
+import org.apache.avro.Schema
 import org.scalatest.concurrent.{ Eventually, ScalaFutures }
 import org.scalatest.prop.PropertyChecks
 import org.scalatest.{ BeforeAndAfterAll, FlatSpec, GivenWhenThen, Matchers }
@@ -48,6 +52,16 @@ trait TestSpec extends FlatSpec
   implicit val log: LoggingAdapter = Logging(system, this.getClass)
   implicit val pc: PatienceConfig = PatienceConfig(timeout = 50.seconds)
   val serialization = SerializationExtension(system)
+
+  implicit class ByteArrayOps(that: Array[Byte]) {
+    def toBase64: String = Base64.getEncoder.encodeToString(that)
+  }
+
+  implicit class StringOps(that: String) {
+    def toByteArray: Array[Byte] = Base64.getDecoder.decode(that)
+    def toInputStream: InputStream = new ByteArrayInputStream(toByteArray)
+    def toSchema: Schema = new Schema.Parser().parse(that)
+  }
 
   implicit class FutureToTry[T](f: Future[T]) {
     def toTry: Try[T] = Try(f.futureValue)

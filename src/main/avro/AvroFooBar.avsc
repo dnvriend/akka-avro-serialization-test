@@ -1,8 +1,8 @@
 {
- "type":"record","name":"AvroFooBar",
+ "type":"record",
+ "name":"AvroFooBar",
  "namespace":"com.github.dnvriend.avro",
  "fields":[
- {"name":"str",
- "type":"string"}
+    {"name":"str", "type": ["string", "null"]}
  ]
 }
