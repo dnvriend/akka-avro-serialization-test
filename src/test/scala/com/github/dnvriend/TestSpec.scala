@@ -49,8 +49,6 @@ trait TestSpec extends FlatSpec
   implicit val pc: PatienceConfig = PatienceConfig(timeout = 50.seconds)
   val serialization = SerializationExtension(system)
 
-  serialization
-
   implicit class FutureToTry[T](f: Future[T]) {
     def toTry: Try[T] = Try(f.futureValue)
   }

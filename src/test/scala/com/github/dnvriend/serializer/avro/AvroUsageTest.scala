@@ -32,7 +32,7 @@ class AvroUsageTest extends TestSpec {
     val method = clazz.getMethod("getClassSchema")
     val result = method.invoke(null)
     result shouldBe a[Schema]
-    result.toString shouldBe """{"type":"record","name":"AvroFooBar","namespace":"com.github.dnvriend.avro","fields":[{"name":"str","type":"string"}]}"""
+    result.toString shouldBe """{"type":"record","name":"AvroFooBar","namespace":"com.github.dnvriend.avro","fields":[{"name":"str","type":{"type":"string","avro.java.string":"String"}}]}"""
   }
 
   it should "serialize using a generic datum writer" in {
@@ -75,6 +75,6 @@ class AvroUsageTest extends TestSpec {
     val decoder: Decoder = DecoderFactory.get().binaryDecoder(bytes, null)
     val reader = new SpecificDatumReader[AnyRef](AvroFooBar.getClassSchema)
     val objectRead = reader.read(null, decoder)
-    objectRead.asInstanceOf[AvroFooBar].getStr.toString shouldBe "this is a test"
+    objectRead.asInstanceOf[AvroFooBar].getStr shouldBe "this is a test"
   }
 }

@@ -24,8 +24,8 @@ class AvroReadEventAdapter extends ReadEventAdapter {
   override def fromJournal(o: Any, manifest: String): EventSeq = {
     println(s"AvroReadEventAdapter.fromJournal with manifest (type-hint): '$manifest'")
     o match {
-      case event: AvroFooBar => EventSeq(FooBar(event.getStr.toString))
-      case event: AvroBazQux => EventSeq(BazQux(event.getStr.toString))
+      case event: AvroFooBar => EventSeq(FooBar(event.getStr))
+      case event: AvroBazQux => EventSeq(BazQux(event.getStr))
     }
   }
 }

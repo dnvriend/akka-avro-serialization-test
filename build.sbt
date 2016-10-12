@@ -36,6 +36,7 @@ licenses +=("Apache-2.0", url("http://opensource.org/licenses/apache2.0.php"))
 // enable scala code formatting //
 import scalariform.formatter.preferences._
 import com.typesafe.sbt.SbtScalariform
+import sbtavro.SbtAvro
 
 // Scalariform settings
 SbtScalariform.autoImport.scalariformPreferences := SbtScalariform.autoImport.scalariformPreferences.value
@@ -54,3 +55,5 @@ headers := Map(
 enablePlugins(AutomateHeaderPlugin)
 
 sbtavro.SbtAvro.avroSettings
+
+(stringType in avroConfig) := "String"
