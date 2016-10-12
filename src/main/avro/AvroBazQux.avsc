@@ -1,0 +1,8 @@
+{
+ "type":"record","name":"AvroBazQux",
+ "namespace":"com.github.dnvriend.avro",
+ "fields":[
+ {"name":"str",
+ "type":"string"}
+ ]
+}
