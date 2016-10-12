@@ -16,21 +16,46 @@
 
 package com.github.dnvriend.serializer.avro
 
-import java.io.ByteArrayOutputStream
+import java.io.{ ByteArrayOutputStream, OutputStream }
 
 import com.github.dnvriend.TestSpec
 import com.github.dnvriend.avro.AvroFooBar
 import org.apache.avro.Schema
-import org.apache.avro.generic.{ GenericDatumWriter, GenericRecord }
+import org.apache.avro.generic.GenericData.Record
+import org.apache.avro.generic.{ GenericData, GenericDatumReader, GenericDatumWriter, GenericRecord }
 import org.apache.avro.io.{ BinaryEncoder, Decoder, DecoderFactory, EncoderFactory }
 import org.apache.avro.specific.{ SpecificDatumReader, SpecificDatumWriter }
 
 class AvroUsageTest extends TestSpec {
 
-  final val AvroFooBarV1 = "ACJ0aGlzIGlzIGEgdGVzdCB2MQ==" // optional field str
-  final val AvroFooBarV2 = "ACJ0aGlzIGlzIGEgdGVzdCB2MgAC" // extra optional field x: Int
-  final val AvroFooBarV3 = "ACJ0aGlzIGlzIGEgdGVzdCB2MwACAAQ=" // extra optional field y: Int
-  final val AvroFooBarV4 = "AAIABA==" // removed field str
+  def withWriter(writerSchema: Schema)(f: Record => (GenericRecord => Unit) => Unit): Array[Byte] = {
+    val record = new Record(writerSchema)
+    val out = new ByteArrayOutputStream()
+    val encoder: BinaryEncoder = EncoderFactory.get().binaryEncoder(out, null)
+    val writer = new GenericDatumWriter[GenericRecord](writerSchema)
+    f(record)(writer.write(_: GenericRecord, encoder))
+    encoder.flush()
+    out.close()
+    out.toByteArray
+  }
+
+  def AvroFooBarV1: Array[Byte] = withWriter(AvroFooBarSchemaV1.schema) { record => writer =>
+    record.put("str", "this is a test v1")
+    writer(record)
+  }
+
+  def AvroFooBarV2: Array[Byte] = withWriter(AvroFooBarSchemaV2.schema) { record => writer =>
+    record.put("str", "this is a test v2")
+    record.put("x", 1)
+    writer(record)
+  }
+
+  def AvroFooBarV3: Array[Byte] = withWriter(AvroFooBarSchemaV3.schema) { record => writer =>
+    record.put("str", "this is a test v3")
+    record.put("x", 1)
+    record.put("y", 2)
+    writer(record)
+  }
 
   final val AvroFooBarSchemaV1 =
     """
@@ -39,7 +64,7 @@ class AvroUsageTest extends TestSpec {
       | "name":"AvroFooBar",
       | "namespace":"com.github.dnvriend.avro",
       | "fields":[
-      |    {"name":"str","type":[{"type":"string","avro.java.string":"String"},"null"]}
+      |    {"name":"str", "type":["null", {"type":"string","avro.java.string":"String"}], "default":null}
       | ]
       |}
     """.stripMargin
@@ -51,8 +76,8 @@ class AvroUsageTest extends TestSpec {
       | "name":"AvroFooBar",
       | "namespace":"com.github.dnvriend.avro",
       | "fields":[
-      |     {"name":"str","type":[{"type":"string","avro.java.string":"String"},"null"]},
-      |     {"name":"x", "type": ["int", "null"]}
+      |     {"name":"str", "type":["null", {"type":"string","avro.java.string":"String"}], "default":null},
+      |     {"name":"x", "type": ["null", "int"], "default":null}
       | ]
       |}
     """.stripMargin
@@ -64,22 +89,9 @@ class AvroUsageTest extends TestSpec {
       | "name":"AvroFooBar",
       | "namespace":"com.github.dnvriend.avro",
       | "fields":[
-      |     {"name":"str","type":[{"type":"string","avro.java.string":"String"},"null"]},
-      |     {"name":"x", "type": ["int", "null"]},
-      |     {"name":"y", "type": ["int", "null"]}
-      | ]
-      |}
-    """.stripMargin
-
-  final val AvroFooBarSchemaV4 =
-    """
-      |{
-      | "type":"record",
-      | "name":"AvroFooBar",
-      | "namespace":"com.github.dnvriend.avro",
-      | "fields":[
-      |     {"name":"x", "type": ["int", "null"]},
-      |     {"name":"y", "type": ["int", "null"]}
+      |     {"name":"str", "type":["null", {"type":"string","avro.java.string":"String"}], "default":null},
+      |     {"name":"x", "type": ["null", "int"], "default":null},
+      |     {"name":"y", "type": ["null", "int"], "default":null}
       | ]
       |}
     """.stripMargin
@@ -130,35 +142,68 @@ class AvroUsageTest extends TestSpec {
     bytes.size shouldBe 16
 
     val decoder: Decoder = DecoderFactory.get().binaryDecoder(bytes, null)
-    val reader = new SpecificDatumReader[AnyRef](AvroFooBar.getClassSchema)
-    val objectRead = reader.read(null, decoder)
-    objectRead.asInstanceOf[AvroFooBar].getStr shouldBe "this is a test"
+    val datumReader = new GenericDatumReader[GenericRecord](AvroFooBar.getClassSchema, AvroFooBar.getClassSchema)
+    val record: GenericRecord = datumReader.read(null, decoder)
+    record.get("str") shouldBe "this is a test"
   }
 
-  def withReader(schema: String = AvroFooBarSchemaV1, data: String = AvroFooBarV1)(f: AvroFooBar => Unit) = {
-    val decoder: Decoder = DecoderFactory.get().binaryDecoder(data.toByteArray, null)
-    val reader = new SpecificDatumReader[AnyRef](schema.toSchema)
-    val objectRead = reader.read(null, decoder)
-    f(objectRead.asInstanceOf[AvroFooBar])
+  def withRecord(writer: String = AvroFooBarSchemaV1, reader: String = AvroFooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: GenericRecord => Unit) = {
+    val decoder: Decoder = DecoderFactory.get().binaryDecoder(data, null)
+    // you can actually give two different schemas to the Avro parser,
+    // and it uses resolution rules
+    // to translate data from the writer schema into the reader schema.
+    // see: https://martin.kleppmann.com/2012/12/05/schema-evolution-in-avro-protocol-buffers-thrift.html
+    // see: http://avro.apache.org/docs/1.7.2/api/java/org/apache/avro/io/parsing/doc-files/parsing.html
+    val datumReader = new GenericDatumReader[GenericRecord](writer.schema, reader.schema)
+    val record: GenericRecord = datumReader.read(null, decoder)
+    f(record)
   }
 
-  it should "deserialize v1 with v1 schema" in withReader() { v1 =>
-    v1.getStr shouldBe "this is a test v1"
+  // as stated by Martin Kleppmann:
+  // "you need to know the exact schema with which the data was written (the writer’s schema)"
+  // so the avro data should be the same version number as the writer's schema
+  // so data and writer have the same version number
+  // the reader however, doesn't
+
+  it should "deserialize v1 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1) { v1 =>
+    v1.get("str") shouldBe "this is a test v1"
   }
 
-  it should "deserialize v2 with v1 schema" in withReader(data = AvroFooBarV2) { v2 =>
-    v2.getStr shouldBe "this is a test v2"
+  it should "deserialize v1 data with v2 reader" in withRecord(reader = AvroFooBarSchemaV2) { v1 =>
+    v1.get("str") shouldBe "this is a test v1"
   }
 
-  it should "deserialize v3 with v1 schema" in withReader(data = AvroFooBarV3) { v3 =>
-    v3.getStr shouldBe "this is a test v3"
+  it should "deserialize v1 data with v3 reader" in withRecord(reader = AvroFooBarSchemaV3) { v1 =>
+    v1.get("str") shouldBe "this is a test v1"
   }
 
-  it should "deserialize v4 with v1 schema" in withReader(data = AvroFooBarV4) { v4 =>
-    intercept[NullPointerException] {
-      // fields are available in the record, but schema doesn't know about it
-      v4.asInstanceOf[GenericRecord].get("x")
-      v4.asInstanceOf[GenericRecord].get("y")
-    }
+  it should "deserialize v2 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1, writer = AvroFooBarSchemaV2, data = AvroFooBarV2) { v2 =>
+    v2.get("str") shouldBe "this is a test v2"
   }
+
+  it should "deserialize v2 data v2 reader" in withRecord(reader = AvroFooBarSchemaV2, writer = AvroFooBarSchemaV2, data = AvroFooBarV2) { v2 =>
+    v2.get("str") shouldBe "this is a test v2"
+    v2.get("x") shouldBe 1
+  }
+
+  it should "deserialize v2 data with v3 reader" in withRecord(reader = AvroFooBarSchemaV3, writer = AvroFooBarSchemaV2, data = AvroFooBarV2) { v2 =>
+    v2.get("str") shouldBe "this is a test v2"
+    v2.get("x") shouldBe 1
+  }
+
+  it should "deserialize v3 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1, writer = AvroFooBarSchemaV3, data = AvroFooBarV3) { v3 =>
+    v3.get("str") shouldBe "this is a test v3"
+  }
+
+  it should "deserialize v3 data with v2 reader" in withRecord(reader = AvroFooBarSchemaV2, writer = AvroFooBarSchemaV3, data = AvroFooBarV3) { v3 =>
+    v3.get("str") shouldBe "this is a test v3"
+    v3.get("x") shouldBe 1
+  }
+
+  it should "deserialize v3 data with v3 reader" in withRecord(reader = AvroFooBarSchemaV3, writer = AvroFooBarSchemaV3, data = AvroFooBarV3) { v3 =>
+    v3.get("str") shouldBe "this is a test v3"
+    v3.get("x") shouldBe 1
+    v3.get("y") shouldBe 2
+  }
+
 }

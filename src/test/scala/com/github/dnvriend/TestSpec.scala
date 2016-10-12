@@ -60,7 +60,7 @@ trait TestSpec extends FlatSpec
   implicit class StringOps(that: String) {
     def toByteArray: Array[Byte] = Base64.getDecoder.decode(that)
     def toInputStream: InputStream = new ByteArrayInputStream(toByteArray)
-    def toSchema: Schema = new Schema.Parser().parse(that)
+    def schema: Schema = new Schema.Parser().parse(that)
   }
 
   implicit class FutureToTry[T](f: Future[T]) {
