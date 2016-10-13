@@ -39,18 +39,18 @@ class AvroUsageTest extends TestSpec {
     out.toByteArray
   }
 
-  def AvroFooBarV1: Array[Byte] = withWriter(AvroFooBarSchemaV1.schema) { record => writer =>
+  def AvroFooBarV1: Array[Byte] = withWriter(AvroFooBarSchemaV1) { record => writer =>
     record.put("str", "this is a test v1")
     writer(record)
   }
 
-  def AvroFooBarV2: Array[Byte] = withWriter(AvroFooBarSchemaV2.schema) { record => writer =>
+  def AvroFooBarV2: Array[Byte] = withWriter(AvroFooBarSchemaV2) { record => writer =>
     record.put("str", "this is a test v2")
     record.put("x", 1)
     writer(record)
   }
 
-  def AvroFooBarV3: Array[Byte] = withWriter(AvroFooBarSchemaV3.schema) { record => writer =>
+  def AvroFooBarV3: Array[Byte] = withWriter(AvroFooBarSchemaV3) { record => writer =>
     record.put("str", "this is a test v3")
     record.put("x", 1)
     record.put("y", 2)
@@ -67,7 +67,7 @@ class AvroUsageTest extends TestSpec {
       |    {"name":"str", "type":["null", {"type":"string","avro.java.string":"String"}], "default":null}
       | ]
       |}
-    """.stripMargin
+    """.stripMargin.schema
 
   final val AvroFooBarSchemaV2 =
     """
@@ -80,7 +80,7 @@ class AvroUsageTest extends TestSpec {
       |     {"name":"x", "type": ["null", "int"], "default":null}
       | ]
       |}
-    """.stripMargin
+    """.stripMargin.schema
 
   final val AvroFooBarSchemaV3 =
     """
@@ -94,7 +94,7 @@ class AvroUsageTest extends TestSpec {
       |     {"name":"y", "type": ["null", "int"], "default":null}
       | ]
       |}
-    """.stripMargin
+    """.stripMargin.schema
 
   it should "get the schema from fqcn" in {
     val clazz: Class[_] = Class.forName("com.github.dnvriend.avro.AvroFooBar")
@@ -147,14 +147,14 @@ class AvroUsageTest extends TestSpec {
     record.get("str") shouldBe "this is a test"
   }
 
-  def withRecord(writer: String = AvroFooBarSchemaV1, reader: String = AvroFooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: GenericRecord => Unit) = {
+  def withRecord(writer: Schema = AvroFooBarSchemaV1, reader: Schema = AvroFooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: GenericRecord => Unit) = {
     val decoder: Decoder = DecoderFactory.get().binaryDecoder(data, null)
     // you can actually give two different schemas to the Avro parser,
     // and it uses resolution rules
     // to translate data from the writer schema into the reader schema.
     // see: https://martin.kleppmann.com/2012/12/05/schema-evolution-in-avro-protocol-buffers-thrift.html
     // see: http://avro.apache.org/docs/1.7.2/api/java/org/apache/avro/io/parsing/doc-files/parsing.html
-    val datumReader = new GenericDatumReader[GenericRecord](writer.schema, reader.schema)
+    val datumReader = new GenericDatumReader[GenericRecord](writer, reader)
     val record: GenericRecord = datumReader.read(null, decoder)
     f(record)
   }
@@ -165,7 +165,7 @@ class AvroUsageTest extends TestSpec {
   // so data and writer have the same version number
   // the reader however, doesn't
 
-  it should "deserialize v1 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1) { v1 =>
+  "generic datum reader" should "deserialize v1 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1) { v1 =>
     v1.get("str") shouldBe "this is a test v1"
   }
 
@@ -206,4 +206,22 @@ class AvroUsageTest extends TestSpec {
     v3.get("y") shouldBe 2
   }
 
+  def withSpecificReader[A >: Null](writer: Schema = AvroFooBarSchemaV1, reader: Schema = AvroFooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: A => Unit): Unit = {
+    val decoder: Decoder = DecoderFactory.get().binaryDecoder(data, null)
+    val datumReader = new SpecificDatumReader[A](writer, reader)
+    val record: A = datumReader.read(null, decoder)
+    f(record)
+  }
+
+  "specific datum reader" should "read v1 data with v1 reader" in withSpecificReader[AvroFooBar]() { v1 =>
+    v1.getStr shouldBe "this is a test v1"
+  }
+
+  "specific datum reader" should "read v2 data with v1 reader" in withSpecificReader[AvroFooBar](data = AvroFooBarV2, writer = AvroFooBarSchemaV2, reader = AvroFooBarSchemaV1) { v1 =>
+    v1.getStr shouldBe "this is a test v2"
+  }
+
+  "specific datum reader" should "read v3 data with v1 reader" in withSpecificReader[AvroFooBar](data = AvroFooBarV3, writer = AvroFooBarSchemaV3, reader = AvroFooBarSchemaV1) { v1 =>
+    v1.getStr shouldBe "this is a test v3"
+  }
 }

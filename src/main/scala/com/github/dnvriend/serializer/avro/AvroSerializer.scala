@@ -27,6 +27,14 @@ import org.apache.avro.specific.{ SpecificDatumReader, SpecificDatumWriter, Spec
 /**
  * Serializes Avro generated org.apache.avro.specific.SpecificRecordBase to the journal
  * as byte array. It assumes that Java generated Avro classes are on the classpath
+ *
+ * Note: This design is flawed, as the event is not tagged with the schema version nor the schema identifier
+ *
+ * Write should, beside the Avro binary data, contain an identifier (address if you will) of the schema
+ * else the read side can never determine the schema that belongs with the Avro data
+ * Please note that there is *no-way* to detect the schema from the Avro binary alone
+ *
+ *
  */
 class AvroSerializer extends SerializerWithStringManifest {
   override def identifier: Int = 100
