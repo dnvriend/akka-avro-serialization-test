@@ -16,22 +16,22 @@
 
 package com.github.dnvriend.serializer.avro
 
-import java.io.{ ByteArrayOutputStream, OutputStream }
+import java.io.ByteArrayOutputStream
 
 import com.github.dnvriend.TestSpec
 import com.github.dnvriend.avro.AvroFooBar
 import org.apache.avro.Schema
 import org.apache.avro.generic.GenericData.Record
-import org.apache.avro.generic.{ GenericData, GenericDatumReader, GenericDatumWriter, GenericRecord }
-import org.apache.avro.io.{ BinaryEncoder, Decoder, DecoderFactory, EncoderFactory }
+import org.apache.avro.generic.{ GenericDatumReader, GenericDatumWriter, GenericRecord }
+import org.apache.avro.io._
 import org.apache.avro.specific.{ SpecificDatumReader, SpecificDatumWriter }
 
 class AvroUsageTest extends TestSpec {
 
-  def withWriter(writerSchema: Schema)(f: Record => (GenericRecord => Unit) => Unit): Array[Byte] = {
+  def withAvroWriter(writerSchema: Schema)(f: Record => (GenericRecord => Unit) => Unit): Array[Byte] = {
     val record = new Record(writerSchema)
     val out = new ByteArrayOutputStream()
-    val encoder: BinaryEncoder = EncoderFactory.get().binaryEncoder(out, null)
+    val encoder: Encoder = EncoderFactory.get().binaryEncoder(out, null)
     val writer = new GenericDatumWriter[GenericRecord](writerSchema)
     f(record)(writer.write(_: GenericRecord, encoder))
     encoder.flush()
@@ -39,25 +39,57 @@ class AvroUsageTest extends TestSpec {
     out.toByteArray
   }
 
-  def AvroFooBarV1: Array[Byte] = withWriter(AvroFooBarSchemaV1) { record => writer =>
+  def AvroFooBarV1: Array[Byte] = withAvroWriter(FooBarSchemaV1) { record => writer =>
     record.put("str", "this is a test v1")
     writer(record)
   }
 
-  def AvroFooBarV2: Array[Byte] = withWriter(AvroFooBarSchemaV2) { record => writer =>
+  def AvroFooBarV2: Array[Byte] = withAvroWriter(FooBarSchemaV2) { record => writer =>
     record.put("str", "this is a test v2")
     record.put("x", 1)
     writer(record)
   }
 
-  def AvroFooBarV3: Array[Byte] = withWriter(AvroFooBarSchemaV3) { record => writer =>
+  def AvroFooBarV3: Array[Byte] = withAvroWriter(FooBarSchemaV3) { record => writer =>
     record.put("str", "this is a test v3")
     record.put("x", 1)
     record.put("y", 2)
     writer(record)
   }
 
-  final val AvroFooBarSchemaV1 =
+  def withJsonWriter(writerSchema: Schema)(f: Record => (GenericRecord => Unit) => Unit): String = {
+    val record = new Record(writerSchema)
+    val out = new ByteArrayOutputStream()
+    val encoder: Encoder = EncoderFactory.get().jsonEncoder(writerSchema, out)
+    val writer = new GenericDatumWriter[GenericRecord](writerSchema)
+    f(record)(writer.write(_: GenericRecord, encoder))
+    encoder.flush()
+    out.close()
+    new String(out.toByteArray)
+  }
+
+  // {"str":{"string":"this is a test v1 json"}}
+  def JsonFooBarV1: String = withJsonWriter(FooBarSchemaV1) { record => writer =>
+    record.put("str", "this is a test v1 json")
+    writer(record)
+  }
+
+  // {"str":{"string":"this is a test v2 json"},"x":1}
+  def JsonFooBarV2: String = withJsonWriter(FooBarSchemaV2) { record => writer =>
+    record.put("str", "this is a test v2 json")
+    record.put("x", 1)
+    writer(record)
+  }
+
+  // {"str":{"string":"this is a test v3 json"},"x":1,"y":2}
+  def JsonFooBarV3: String = withJsonWriter(FooBarSchemaV3) { record => writer =>
+    record.put("str", "this is a test v3 json")
+    record.put("x", 1)
+    record.put("y", 2)
+    writer(record)
+  }
+
+  final val FooBarSchemaV1 =
     """
       |{
       | "type":"record",
@@ -69,7 +101,7 @@ class AvroUsageTest extends TestSpec {
       |}
     """.stripMargin.schema
 
-  final val AvroFooBarSchemaV2 =
+  final val FooBarSchemaV2 =
     """
       |{
       | "type":"record",
@@ -82,7 +114,7 @@ class AvroUsageTest extends TestSpec {
       |}
     """.stripMargin.schema
 
-  final val AvroFooBarSchemaV3 =
+  final val FooBarSchemaV3 =
     """
       |{
       | "type":"record",
@@ -147,7 +179,7 @@ class AvroUsageTest extends TestSpec {
     record.get("str") shouldBe "this is a test"
   }
 
-  def withRecord(writer: Schema = AvroFooBarSchemaV1, reader: Schema = AvroFooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: GenericRecord => Unit) = {
+  def withGenericDatumAvroReader(writer: Schema = FooBarSchemaV1, reader: Schema = FooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: GenericRecord => Unit) = {
     val decoder: Decoder = DecoderFactory.get().binaryDecoder(data, null)
     // you can actually give two different schemas to the Avro parser,
     // and it uses resolution rules
@@ -165,63 +197,140 @@ class AvroUsageTest extends TestSpec {
   // so data and writer have the same version number
   // the reader however, doesn't
 
-  "generic datum reader" should "deserialize v1 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1) { v1 =>
+  "generic datum reader avro" should "deserialize v1 data with v1 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV1) { v1 =>
     v1.get("str") shouldBe "this is a test v1"
   }
 
-  it should "deserialize v1 data with v2 reader" in withRecord(reader = AvroFooBarSchemaV2) { v1 =>
+  it should "deserialize v1 data with v2 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV2) { v1 =>
     v1.get("str") shouldBe "this is a test v1"
   }
 
-  it should "deserialize v1 data with v3 reader" in withRecord(reader = AvroFooBarSchemaV3) { v1 =>
+  it should "deserialize v1 data with v3 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV3) { v1 =>
     v1.get("str") shouldBe "this is a test v1"
   }
 
-  it should "deserialize v2 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1, writer = AvroFooBarSchemaV2, data = AvroFooBarV2) { v2 =>
+  it should "deserialize v2 data with v1 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV1, writer = FooBarSchemaV2, data = AvroFooBarV2) { v2 =>
     v2.get("str") shouldBe "this is a test v2"
+    v2.get("x") shouldBe null
   }
 
-  it should "deserialize v2 data v2 reader" in withRecord(reader = AvroFooBarSchemaV2, writer = AvroFooBarSchemaV2, data = AvroFooBarV2) { v2 =>
-    v2.get("str") shouldBe "this is a test v2"
-    v2.get("x") shouldBe 1
-  }
-
-  it should "deserialize v2 data with v3 reader" in withRecord(reader = AvroFooBarSchemaV3, writer = AvroFooBarSchemaV2, data = AvroFooBarV2) { v2 =>
+  it should "deserialize v2 data v2 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV2, writer = FooBarSchemaV2, data = AvroFooBarV2) { v2 =>
     v2.get("str") shouldBe "this is a test v2"
     v2.get("x") shouldBe 1
   }
 
-  it should "deserialize v3 data with v1 reader" in withRecord(reader = AvroFooBarSchemaV1, writer = AvroFooBarSchemaV3, data = AvroFooBarV3) { v3 =>
+  it should "deserialize v2 data with v3 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV3, writer = FooBarSchemaV2, data = AvroFooBarV2) { v2 =>
+    v2.get("str") shouldBe "this is a test v2"
+    v2.get("x") shouldBe 1
+  }
+
+  it should "deserialize v3 data with v1 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV1, writer = FooBarSchemaV3, data = AvroFooBarV3) { v3 =>
     v3.get("str") shouldBe "this is a test v3"
+    v3.get("x") shouldBe null
+    v3.get("y") shouldBe null
   }
 
-  it should "deserialize v3 data with v2 reader" in withRecord(reader = AvroFooBarSchemaV2, writer = AvroFooBarSchemaV3, data = AvroFooBarV3) { v3 =>
+  it should "deserialize v3 data with v2 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV2, writer = FooBarSchemaV3, data = AvroFooBarV3) { v3 =>
     v3.get("str") shouldBe "this is a test v3"
     v3.get("x") shouldBe 1
+    v3.get("y") shouldBe null
   }
 
-  it should "deserialize v3 data with v3 reader" in withRecord(reader = AvroFooBarSchemaV3, writer = AvroFooBarSchemaV3, data = AvroFooBarV3) { v3 =>
+  it should "deserialize v3 data with v3 reader" in withGenericDatumAvroReader(reader = FooBarSchemaV3, writer = FooBarSchemaV3, data = AvroFooBarV3) { v3 =>
     v3.get("str") shouldBe "this is a test v3"
     v3.get("x") shouldBe 1
     v3.get("y") shouldBe 2
   }
 
-  def withSpecificReader[A >: Null](writer: Schema = AvroFooBarSchemaV1, reader: Schema = AvroFooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: A => Unit): Unit = {
+  def withSpecificAvroReader[A >: Null](writer: Schema = FooBarSchemaV1, reader: Schema = FooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: A => Unit): Unit = {
     val decoder: Decoder = DecoderFactory.get().binaryDecoder(data, null)
     val datumReader = new SpecificDatumReader[A](writer, reader)
     val record: A = datumReader.read(null, decoder)
     f(record)
   }
 
-  "specific datum reader" should "read v1 data with v1 reader" in withSpecificReader[AvroFooBar]() { v1 =>
+  "specific datum reader avro" should "read v1 data with v1 reader" in withSpecificAvroReader[AvroFooBar](data = AvroFooBarV1, writer = FooBarSchemaV1, reader = FooBarSchemaV1) { v1 =>
     v1.getStr shouldBe "this is a test v1"
   }
 
-  "specific datum reader" should "read v2 data with v1 reader" in withSpecificReader[AvroFooBar](data = AvroFooBarV2, writer = AvroFooBarSchemaV2, reader = AvroFooBarSchemaV1) { v1 =>
+  it should "read v2 data with v1 reader" in withSpecificAvroReader[AvroFooBar](data = AvroFooBarV2, writer = FooBarSchemaV2, reader = FooBarSchemaV1) { v1 =>
     v1.getStr shouldBe "this is a test v2"
   }
 
-  "specific datum reader" should "read v3 data with v1 reader" in withSpecificReader[AvroFooBar](data = AvroFooBarV3, writer = AvroFooBarSchemaV3, reader = AvroFooBarSchemaV1) { v1 =>
+  it should "read v3 data with v1 reader" in withSpecificAvroReader[AvroFooBar](data = AvroFooBarV3, writer = FooBarSchemaV3, reader = FooBarSchemaV1) { v1 =>
     v1.getStr shouldBe "this is a test v3"
+  }
+
+  def withGenericDatumJsonReader(writer: Schema = FooBarSchemaV1, reader: Schema = FooBarSchemaV1, json: String = JsonFooBarV1)(f: GenericRecord => Unit) = {
+    println(s"parsing json: '$json'")
+    val decoder: Decoder = DecoderFactory.get().jsonDecoder(writer, json)
+    val datumReader = new GenericDatumReader[GenericRecord](writer, reader)
+    val record: GenericRecord = datumReader.read(null, decoder)
+    f(record)
+  }
+
+  "generic datum reader json" should "read v1 json data with v1 reader" in withGenericDatumJsonReader(json = JsonFooBarV1, writer = FooBarSchemaV1, reader = FooBarSchemaV1) { v1 =>
+    v1.get("str") shouldBe "this is a test v1 json"
+  }
+
+  it should "read v1 data with v2 reader" in withGenericDatumJsonReader(json = JsonFooBarV1, writer = FooBarSchemaV1, reader = FooBarSchemaV2) { v1 =>
+    v1.get("str") shouldBe "this is a test v1 json"
+  }
+
+  it should "read v1 data with v3 reader" in withGenericDatumJsonReader(json = JsonFooBarV1, writer = FooBarSchemaV1, reader = FooBarSchemaV3) { v1 =>
+    v1.get("str") shouldBe "this is a test v1 json"
+  }
+
+  it should "read v2 json data with v1 reader" in withGenericDatumJsonReader(json = JsonFooBarV2, writer = FooBarSchemaV2, reader = FooBarSchemaV1) { v2 =>
+    v2.get("str") shouldBe "this is a test v2 json"
+    v2.get("x") shouldBe null
+  }
+
+  it should "read v2 json data with v2 reader" in withGenericDatumJsonReader(json = JsonFooBarV2, writer = FooBarSchemaV2, reader = FooBarSchemaV2) { v2 =>
+    v2.get("str") shouldBe "this is a test v2 json"
+    v2.get("x") shouldBe 1
+  }
+
+  it should "read v2 json data with v3 reader" in withGenericDatumJsonReader(json = JsonFooBarV2, writer = FooBarSchemaV2, reader = FooBarSchemaV3) { v2 =>
+    v2.get("str") shouldBe "this is a test v2 json"
+    v2.get("x") shouldBe 1
+  }
+
+  it should "read v3 json data with v1 reader" in withGenericDatumJsonReader(json = JsonFooBarV3, writer = FooBarSchemaV3, reader = FooBarSchemaV1) { v3 =>
+    v3.get("str") shouldBe "this is a test v3 json"
+    v3.get("x") shouldBe null
+    v3.get("y") shouldBe null
+  }
+
+  it should "read v3 json data with v2 reader" in withGenericDatumJsonReader(json = JsonFooBarV3, writer = FooBarSchemaV3, reader = FooBarSchemaV2) { v3 =>
+    v3.get("str") shouldBe "this is a test v3 json"
+    v3.get("x") shouldBe 1
+    v3.get("y") shouldBe null
+  }
+
+  it should "read v3 json data with v3 reader" in withGenericDatumJsonReader(json = JsonFooBarV3, writer = FooBarSchemaV3, reader = FooBarSchemaV3) { v3 =>
+    v3.get("str") shouldBe "this is a test v3 json"
+    v3.get("x") shouldBe 1
+    v3.get("y") shouldBe 2
+  }
+
+  def withSpecificJsonReader[A >: Null](writer: Schema = FooBarSchemaV1, reader: Schema = FooBarSchemaV1, json: String = JsonFooBarV1)(f: A => Unit): Unit = {
+    println(s"parsing json: '$json'")
+    val decoder: Decoder = DecoderFactory.get().jsonDecoder(writer, json)
+    val datumReader = new SpecificDatumReader[A](writer, reader)
+    val record: A = datumReader.read(null, decoder)
+    f(record)
+  }
+
+  "specific datum reader json" should "read v1 json data with v1 reader" in withSpecificJsonReader[AvroFooBar](json = JsonFooBarV1, writer = FooBarSchemaV1, reader = FooBarSchemaV1) { v1 =>
+    v1.getStr shouldBe "this is a test v1 json"
+  }
+
+  it should "read v2 json data with v1 reader" in withSpecificJsonReader[AvroFooBar](json = JsonFooBarV2, writer = FooBarSchemaV2, reader = FooBarSchemaV1) { v1 =>
+    v1.getStr shouldBe "this is a test v2 json"
+  }
+
+  it should "read v3 json data with v1 reader" in withSpecificJsonReader[AvroFooBar](json = JsonFooBarV3, writer = FooBarSchemaV3, reader = FooBarSchemaV1) { v1 =>
+    v1.getStr shouldBe "this is a test v3 json"
   }
 }
