@@ -25,6 +25,8 @@ import org.apache.avro.generic.GenericData.Record
 import org.apache.avro.generic.{ GenericDatumReader, GenericDatumWriter, GenericRecord }
 import org.apache.avro.io._
 import org.apache.avro.specific.{ SpecificDatumReader, SpecificDatumWriter }
+import scalaz._
+import Scalaz._
 
 class AvroUsageTest extends TestSpec {
 
@@ -176,7 +178,8 @@ class AvroUsageTest extends TestSpec {
     val decoder: Decoder = DecoderFactory.get().binaryDecoder(bytes, null)
     val datumReader = new GenericDatumReader[GenericRecord](AvroFooBar.getClassSchema, AvroFooBar.getClassSchema)
     val record: GenericRecord = datumReader.read(null, decoder)
-    record.get("str") shouldBe "this is a test"
+    record.get("str") shouldBe a[CharSequence]
+    record.get("str").toString shouldBe "this is a test"
   }
 
   def withGenericDatumAvroReader(writer: Schema = FooBarSchemaV1, reader: Schema = FooBarSchemaV1, data: Array[Byte] = AvroFooBarV1)(f: GenericRecord => Unit) = {
